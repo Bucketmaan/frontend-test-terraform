@@ -5,22 +5,24 @@ import Modal from "@mui/material/Modal";
 import Button from "./Button";
 import Marker from "./Marker";
 import DetailSmoke from "./DetailSmoke";
-const JAWG_API_KEY =
-  "ZcY8M0FxvuG5pICKPZLcT6IlPuiWJC1nJb6yPypgJvEPyQebKYMSdkxZzBU2OikP";
+
+import { createSmokeSpot, getSmokeSpots } from "../api/smoke";
+
+const JAWG_API_KEY = import.meta.env.VITE_JAWG_API_KEY;
 
 export default function JawgMap() {
+  const [spotName, setSpotName] = useState("");
   const [smokerName, setSmokerName] = useState("");
   const [description, setDescription] = useState("");
-  const [userLocation, setUserLocation] = useState(null); // { latitude, longitude } | null
+  const [userLocation, setUserLocation] = useState(null);
   const [openAddModal, setOpenAddModal] = useState(false);
-  const [spots, setSpots] = useState([]); // list of { id, lat, lng, smokerName, description }
-  const [selectedSpot, setSelectedSpot] = useState(null); // spot clicked on map
+  const [spots, setSpots] = useState([]);
+  const [map, setMap] = useState(null);
+  const [selectedSpot, setSelectedSpot] = useState(null);
 
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
-  const userMarkerRef = useRef(null); // "Vous êtes ici" marker
 
-  // Init map + geolocation on mount
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
@@ -33,8 +35,8 @@ export default function JawgMap() {
 
     map.addControl(new maplibregl.NavigationControl(), "top-right");
     mapRef.current = map;
+    setMap(map);
 
-    // Geolocation: center on user and add "you are here" marker
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -46,7 +48,7 @@ export default function JawgMap() {
             zoom: 15,
           });
 
-          const userMarker = new maplibregl.Marker({ color: "#007AFF" })
+          new maplibregl.Marker({ color: "#007AFF" })
             .setLngLat([longitude, latitude])
             .setPopup(
               new maplibregl.Popup().setHTML(
@@ -56,8 +58,6 @@ export default function JawgMap() {
               )
             )
             .addTo(map);
-
-          userMarkerRef.current = userMarker;
         },
         (error) => {
           console.error("Error getting user location:", error);
@@ -68,23 +68,29 @@ export default function JawgMap() {
     }
 
     return () => {
-      if (userMarkerRef.current) {
-        userMarkerRef.current.remove();
-        userMarkerRef.current = null;
-      }
       map.remove();
       mapRef.current = null;
     };
   }, []);
 
-  // Open/close add-spot modal
+  useEffect(() => {
+    const fetchSpots = async () => {
+      try {
+        const items = await getSmokeSpots();
+        console.log("Fetched spots:", items);
+        setSpots(items);
+      } catch (err) {
+        console.error("Failed to load spots:", err);
+      }
+    };
+
+    fetchSpots();
+  }, []);
+
   const handleOpenAddModal = () => setOpenAddModal(true);
   const handleCloseAddModal = () => setOpenAddModal(false);
 
-  // Add a new spot at user location
-  const handleAddPoint = () => {
-    if (!mapRef.current) return;
-
+  const handleAddPoint = async () => {
     if (!userLocation) {
       alert(
         "Localisation non disponible. Vérifie que tu as accepté la géolocalisation."
@@ -94,24 +100,32 @@ export default function JawgMap() {
 
     const { latitude, longitude } = userLocation;
 
-    mapRef.current.flyTo({
-      center: [longitude, latitude],
-      zoom: 15,
-    });
+    if (mapRef.current) {
+      mapRef.current.flyTo({
+        center: [longitude, latitude],
+        zoom: 15,
+      });
+    }
 
-    const newSpot = {
-      id: Date.now(),
-      lat: latitude,
-      lng: longitude,
+    const newSpotPayload = {
+      name: spotName || "Spot sans nom",
       smokerName,
       description,
+      latitude,
+      longitude,
     };
 
-    setSpots((prev) => [...prev, newSpot]);
-
-    setOpenAddModal(false);
-    setDescription("");
-    setSmokerName("");
+    try {
+      const createdSpot = await createSmokeSpot(newSpotPayload);
+      setSpots((prev) => [...prev, createdSpot]);
+      setOpenAddModal(false);
+      setDescription("");
+      setSmokerName("");
+      setSpotName("");
+    } catch (err) {
+      console.error("Failed to create spot:", err);
+      alert("Impossible d'enregistrer ce spot. Réessaie plus tard.");
+    }
   };
 
   const handleMarkerClick = useCallback((spot) => {
@@ -122,22 +136,17 @@ export default function JawgMap() {
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <div   style={{
+      <div
+        style={{
           position: "absolute",
           top: 10,
           left: 10,
           zIndex: 2,
-        }}>
-      <Button
-      
-        label="Nouveau spot"
-        handleButton={handleOpenAddModal}
-      />
+        }}
+      >
+        <Button label="Nouveau spot" handleButton={handleOpenAddModal} />
       </div>
-       
-     
 
-      {/* Add-spot Modal */}
       <Modal open={openAddModal} onClose={handleCloseAddModal}>
         <div
           style={{
@@ -165,6 +174,12 @@ export default function JawgMap() {
           >
             <input
               type="text"
+              placeholder="Nom du spot"
+              value={spotName}
+              onChange={(e) => setSpotName(e.target.value)}
+            />
+            <input
+              type="text"
               placeholder="Nom du fumeur"
               value={smokerName}
               onChange={(e) => setSmokerName(e.target.value)}
@@ -186,17 +201,10 @@ export default function JawgMap() {
         </div>
       </Modal>
 
-      {/* Marker layer (React component that manipulates MapLibre markers) */}
-      <Marker
-        map={mapRef.current}
-        spots={spots}
-        onMarkerClick={handleMarkerClick}
-      />
+      <Marker map={map} spots={spots} onMarkerClick={handleMarkerClick} />
 
-      {/* Popup for a selected spot */}
       <DetailSmoke spot={selectedSpot} onClose={handleCloseSpotPopup} />
 
-      {/* Map container */}
       <div ref={mapContainerRef} style={{ width: "100%", height: "100%" }} />
     </div>
   );

@@ -2,6 +2,7 @@ import Modal from "@mui/material/Modal";
 import { useEffect, useState } from "react";
 import { coordinatesToAddress } from "../utils/Address";
 import Button from "./Button";
+import { deleteSmokeSpot } from "../api/smoke";
 /**
  * Props:
  * - spot: { id, lat, lng, smokerName, description } | null
@@ -11,6 +12,13 @@ export default function DetailSmoke({ spot, onClose }) {
   const [address, setAddress] = useState('');
   const [addressError, setAddressError] = useState('');
   const [loadingAddress, setLoadingAddress] = useState(false);
+
+
+  const onDelete = async () => {
+    await deleteSmokeSpot(spot.id);
+    onClose();
+    window.location.reload();
+  }
     useEffect(() => {
     if (!spot) {
       setAddress("");
@@ -18,11 +26,12 @@ export default function DetailSmoke({ spot, onClose }) {
       setLoadingAddress(false);
       return;
     }
+    console.log(spot.id)
 
     setLoadingAddress(true);
     setAddressError("");
 
-    coordinatesToAddress(spot.lat, spot.lng)
+    coordinatesToAddress(spot.latitude, spot.longitude)
       .then((addr) => {
         setAddress(addr);
       })
@@ -41,6 +50,7 @@ export default function DetailSmoke({ spot, onClose }) {
     <Modal open={!!spot} onClose={onClose}>
       <div
         style={{
+          width: '400px',
           padding: "16px",
           borderRadius: "10px",
           backgroundColor: "white",
@@ -67,7 +77,10 @@ export default function DetailSmoke({ spot, onClose }) {
             <span>Adresse inconnue</span>
           )}
         </p>
+        <div style={{display: 'flex', flexDirection: 'row', gap: '8px'}}>
         <Button handleButton={onClose} label="Fermer"/>
+         <Button handleButton={onDelete} label="Supprimer"/>
+         </div>
 
       </div>
     </Modal>
