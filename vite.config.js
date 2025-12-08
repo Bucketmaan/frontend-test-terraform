@@ -19,7 +19,7 @@ export default defineConfig(({ mode }) => {
                     target: `http://${HOST}:${PORT}`,
                     changeOrigin: true,
                     secure: false,
-                    rewrite: (path) => path.replace(/^\/api/, ""),
+                    rewrite: (path) => path.replace(/^\/api/, "/smoke"),
                 },
             },
         },
