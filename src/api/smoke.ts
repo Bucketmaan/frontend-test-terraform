@@ -9,6 +9,7 @@ type SmokeSpot = {
 
 export async function getSmokeSpots() {
     try {
+        console.log(client.defaults.baseURL + "/smoke");
         const response = await client.get("");
         return response.data;
     } catch (error) {
@@ -28,7 +29,7 @@ export async function createSmokeSpot(body: SmokeSpot){
 }
 
 export async function deleteSmokeSpot(id: number){
-   try {
+    try {
         const response = await client.delete(`/${id}`);
         return response.data;
     } catch (error) {
