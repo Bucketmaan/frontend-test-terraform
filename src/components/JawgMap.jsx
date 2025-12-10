@@ -19,6 +19,7 @@ export default function JawgMap() {
     const [spots, setSpots] = useState([]);
     const [map, setMap] = useState(null);
     const [selectedSpot, setSelectedSpot] = useState(null);
+    const [clickedLocation, setClickedLocation] = useState(null);
 
     const mapContainerRef = useRef(null);
     const mapRef = useRef(null);
@@ -74,7 +75,17 @@ export default function JawgMap() {
 
         loadLocation();
 
+        // Handle map click to add a pin
+        const handleMapClick = (e) => {
+            const { lng, lat } = e.lngLat;
+            setClickedLocation({ latitude: lat, longitude: lng });
+            setOpenAddModal(true);
+        };
+
+        map.on("click", handleMapClick);
+
         return () => {
+            map.off("click", handleMapClick);
             map.remove();
             mapRef.current = null;
         };
@@ -99,14 +110,16 @@ export default function JawgMap() {
     //   Ajouter un spot
     // ---------------------------
     const handleAddPoint = async () => {
-        if (!userLocation) {
+        const location = clickedLocation || userLocation;
+
+        if (!location) {
             alert(
                 "Localisation indisponible. As-tu accepté la géolocalisation ?"
             );
             return;
         }
 
-        const { latitude, longitude } = userLocation;
+        const { latitude, longitude } = location;
 
         if (mapRef.current) {
             mapRef.current.flyTo({
@@ -130,6 +143,7 @@ export default function JawgMap() {
             setSpotName("");
             setSmokerName("");
             setDescription("");
+            setClickedLocation(null);
         } catch (err) {
             console.error("Failed to create spot:", err);
             alert("Impossible d'enregistrer ce spot. Réessaie plus tard.");
@@ -147,14 +161,13 @@ export default function JawgMap() {
     // ---------------------------
     return (
         <div style={{ position: "relative", width: "100%", height: "100%" }}>
-            <div style={{ position: "absolute", top: 10, left: 10, zIndex: 2 }}>
-                <Button
-                    label="Nouveau spot"
-                    handleButton={() => setOpenAddModal(true)}
-                />
-            </div>
-
-            <Modal open={openAddModal} onClose={() => setOpenAddModal(false)}>
+            <Modal
+                open={openAddModal}
+                onClose={() => {
+                    setOpenAddModal(false);
+                    setClickedLocation(null);
+                }}
+            >
                 <div
                     style={{
                         padding: "16px",
