@@ -23,6 +23,28 @@ export default function JawgMap() {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
 
+  // ---------------------------
+  //  Fallback par IP si HTTPS Impossible
+  // ---------------------------
+  const fetchLocationByIP = async () => {
+    try {
+      const res = await fetch("https://ipapi.co/json");
+      if (!res.ok) throw new Error("IP geolocation failed");
+
+      const data = await res.json();
+      return {
+        latitude: data.latitude,
+        longitude: data.longitude,
+      };
+    } catch (err) {
+      console.error("Erreur géoloc IP:", err);
+      return null;
+    }
+  };
+
+  // ---------------------------
+  //   Initialisation de la MAP
+  // ---------------------------
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
@@ -37,35 +59,61 @@ export default function JawgMap() {
     mapRef.current = map;
     setMap(map);
 
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          setUserLocation({ latitude, longitude });
+    const centerMapOn = ({ latitude, longitude }) => {
+      setUserLocation({ latitude, longitude });
 
-          map.flyTo({
-            center: [longitude, latitude],
-            zoom: 15,
-          });
+      map.flyTo({
+        center: [longitude, latitude],
+        zoom: 15,
+      });
 
-          new maplibregl.Marker({ color: "#007AFF" })
-            .setLngLat([longitude, latitude])
-            .setPopup(
-              new maplibregl.Popup().setHTML(
-                `<b>Vous êtes ici</b><br/>Lat: ${latitude.toFixed(
-                  5
-                )}, Lng: ${longitude.toFixed(5)}`
-              )
-            )
-            .addTo(map);
-        },
-        (error) => {
-          console.error("Error getting user location:", error);
+      new maplibregl.Marker({ color: "#007AFF" })
+        .setLngLat([longitude, latitude])
+        .setPopup(
+          new maplibregl.Popup().setHTML(
+            `<b>Vous êtes ici</b><br/>Lat: ${latitude.toFixed(
+              5
+            )}, Lng: ${longitude.toFixed(5)}`
+          )
+        )
+        .addTo(map);
+    };
+
+    const tryBrowserGeolocation = () => {
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          (position) =>
+            resolve({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+            }),
+          (err) => reject(err)
+        );
+      });
+    };
+
+    const loadLocation = async () => {
+      const canUseGPS =
+        typeof navigator !== "undefined" &&
+        "geolocation" in navigator &&
+        window.isSecureContext;
+
+      if (canUseGPS) {
+        try {
+          const loc = await tryBrowserGeolocation();
+          return centerMapOn(loc);
+        } catch (err) {
+          console.warn("Géo navigateur refusée, fallback IP.");
         }
-      );
-    } else {
-      console.error("Geolocation is not supported by this browser.");
-    }
+      } else {
+        console.warn("HTTP non sécurisé → activation du fallback IP.");
+      }
+
+      const ipLoc = await fetchLocationByIP();
+      if (ipLoc) centerMapOn(ipLoc);
+    };
+
+    loadLocation();
 
     return () => {
       map.remove();
@@ -73,28 +121,27 @@ export default function JawgMap() {
     };
   }, []);
 
+  // ---------------------------
+  //   Chargement des spots
+  // ---------------------------
   useEffect(() => {
     const fetchSpots = async () => {
       try {
         const items = await getSmokeSpots();
-        console.log("Fetched spots:", items);
         setSpots(items);
       } catch (err) {
         console.error("Failed to load spots:", err);
       }
     };
-
     fetchSpots();
   }, []);
 
-  const handleOpenAddModal = () => setOpenAddModal(true);
-  const handleCloseAddModal = () => setOpenAddModal(false);
-
+  // ---------------------------
+  //   Ajouter un spot
+  // ---------------------------
   const handleAddPoint = async () => {
     if (!userLocation) {
-      alert(
-        "Localisation non disponible. Vérifie que tu as accepté la géolocalisation."
-      );
+      alert("Localisation indisponible. As-tu accepté la géolocalisation ?");
       return;
     }
 
@@ -119,9 +166,9 @@ export default function JawgMap() {
       const createdSpot = await createSmokeSpot(newSpotPayload);
       setSpots((prev) => [...prev, createdSpot]);
       setOpenAddModal(false);
-      setDescription("");
-      setSmokerName("");
       setSpotName("");
+      setSmokerName("");
+      setDescription("");
     } catch (err) {
       console.error("Failed to create spot:", err);
       alert("Impossible d'enregistrer ce spot. Réessaie plus tard.");
@@ -134,20 +181,16 @@ export default function JawgMap() {
 
   const handleCloseSpotPopup = () => setSelectedSpot(null);
 
+  // ---------------------------
+  //        RENDER
+  // ---------------------------
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <div
-        style={{
-          position: "absolute",
-          top: 10,
-          left: 10,
-          zIndex: 2,
-        }}
-      >
-        <Button label="Nouveau spot" handleButton={handleOpenAddModal} />
+      <div style={{ position: "absolute", top: 10, left: 10, zIndex: 2 }}>
+        <Button label="Nouveau spot" handleButton={() => setOpenAddModal(true)} />
       </div>
 
-      <Modal open={openAddModal} onClose={handleCloseAddModal}>
+      <Modal open={openAddModal} onClose={() => setOpenAddModal(false)}>
         <div
           style={{
             padding: "16px",
@@ -195,7 +238,10 @@ export default function JawgMap() {
           <button onClick={handleAddPoint} disabled={!userLocation}>
             Ajouter à ma position
           </button>
-          <button onClick={handleCloseAddModal} style={{ marginLeft: 8 }}>
+          <button
+            onClick={() => setOpenAddModal(false)}
+            style={{ marginLeft: 8 }}
+          >
             Annuler
           </button>
         </div>
