@@ -24,7 +24,8 @@ export default function Marker({ map, spots, onMarkerClick }) {
         .setLngLat([spot.longitude, spot.latitude])
         .addTo(map);
 
-      marker.getElement().addEventListener("click", () => {
+      marker.getElement().addEventListener("click", (e) => {
+        e.stopPropagation();
         onMarkerClick(spot);
       });
 
